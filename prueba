@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aumentada</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>RA con Cámara - Holograma</title>
     <style>
         * {
             margin: 0;
@@ -109,57 +109,229 @@
     </style>
 </head>
 <body>
-    <video  id="video" autoplay playsinline></video>
+    <video id="video" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
-
-    <div id="permisos">
-        <h2>Acceso a camara requerido</h2>
+    
+    <div id="permissionPrompt">
+        <h2>📸 Acceso a Cámara Requerido</h2>
+        <p>Necesitamos permiso para acceder a tu cámara</p>
+        <p style="margin-top: 10px; font-size: 14px; color: #ccc;">Haz clic en el navegador para permitir</p>
     </div>
-
+    
     <div id="info">
-        <h2>Iniciando camara</h2>
+        <h2>🌌 RA Holograma</h2>
+        <div id="status">📷 Iniciando cámara...</div>
+        <p style="font-size: 12px; margin-top: 10px; color: #00ff00;">Apunta a una superficie</p>
+    </div>
+    
+    <div id="controls">
+        <button onclick="changeColor()" id="btnColor">🎨 Color</button>
+        <button onclick="toggleAnimation()" id="btnAnim">⏸ Pausar</button>
+        <button onclick="toggleMode()" id="btnMode">🔄 Modo</button>
     </div>
 
-    <div id="controles">
-        <button onclick="pausar()">Pausa</button>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.180.0/three.core.min.js" integrity="sha512-JtE+2LgA+S5EY7wWWGRjA+HHkzdvk310Tgg77lglTmgB30/AazaU4iaEVhyA8nDKrcjtQDyt23MJt+cbHXMfVw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        const video  = document.getElementById('video');
+        const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
-        const ctx    = canvas.getContext('2d');
-
-        async function abrirCamara() {
+        const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        let stream = null;
+        let animationActive = true;
+        let colorMode = 0;
+        let mode = 0;
+        let time = 0;
+        
+        const colors = [
+            { r: 0, g: 255, b: 255 },    // Cyan
+            { r: 255, g: 0, b: 255 },    // Magenta
+            { r: 0, g: 255, b: 0 },      // Verde
+            { r: 255, g: 255, b: 0 }     // Amarillo
+        ];
+        
+        // Iniciar cámara
+        async function startCamera() {
             try {
-              document.getElementById('permisos').style.display = 'block';
-              stream = await navigator.mediaDevices.getUserMedia({ 
-                      video: { facingMode: 'environment', width: { ideal: 1280 }, 
-                                    height: { ideal: 720 } }, audio: false });
-              document.getElementById('permisos').style.display = 'hidden';
-              video.srcObject = stream;
-              video.onloadedmetadata = () => {
-                  video.play();
-                  animar();
-              };                            
-            }catch (error) {
-                alert('Error al acceder a la camara: ' + error.message);
+                document.getElementById('permissionPrompt').style.display = 'block';
+                
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+                });
+                
+                document.getElementById('permissionPrompt').classList.add('hidden');
+                video.srcObject = stream;
+                statusEl.textContent = '✅ Cámara activa - Apunta a una superficie';
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    animateAR();
+                };
+                
+            } catch (error) {
+                console.error('Error de cámara:', error);
+                statusEl.textContent = '❌ Error: Permisos denegados. Usa modo normal (no incógnito)';
+                document.getElementById('permissionPrompt').innerHTML = `
+                    <h2>❌ Permisos Denegados</h2>
+                    <p>Parece que estás en modo incógnito o los permisos fueron rechazados.</p>
+                    <p style="margin-top: 10px; font-size: 14px;">Abre en modo normal (no incógnito)</p>
+                `;
+                document.getElementById('permissionPrompt').classList.remove('hidden');
             }
         }
-        function animar() {
+        
+        // Dibujar objeto 3D holográfico
+        function drawHologram(x, y, size, rotation) {
+            const color = colors[colorMode];
+            
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+            
+            if (mode === 0) {
+                // Cristal octaedro
+                ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+                ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
+                ctx.lineWidth = 3;
+                
+                // Octaedro simple
+                const points = [
+                    [0, -size],
+                    [size, 0],
+                    [0, size],
+                    [-size, 0]
+                ];
+                
+                ctx.beginPath();
+                ctx.moveTo(points[0][0], points[0][1]);
+                for (let i = 1; i < points.length; i++) {
+                    ctx.lineTo(points[i][0], points[i][1]);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                
+            } else if (mode === 1) {
+                // Anillos
+                ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+                ctx.lineWidth = 2;
+                
+                for (let i = 1; i <= 3; i++) {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, size * i * 0.3, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                
+            } else {
+                // Esfera energética
+                ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.5)`;
+                ctx.beginPath();
+                ctx.arc(0, 0, size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            
+            ctx.restore();
+        }
+        
+        // Dibujar efecto de luz holográfica
+        function drawHoloEffect(x, y, size) {
+            const color = colors[colorMode];
+            
+            // Aura pulsante
+            const pulse = Math.sin(time * 0.05) * 0.5 + 0.5;
+            ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.2 * pulse})`;
+            ctx.beginPath();
+            ctx.arc(x, y, size * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Líneas de energía
+            ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.4)`;
+            ctx.lineWidth = 1;
+            
+            for (let i = 0; i < 6; i++) {
+                const angle = (i / 6) * Math.PI * 2 + time * 0.02;
+                const x1 = x + Math.cos(angle) * size;
+                const y1 = y + Math.sin(angle) * size;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x1, y1);
+                ctx.stroke();
+            }
+        }
+        
+        // Loop de animación AR
+        function animateAR() {
+            // Dibujar video
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
+            // Agregar overlay oscuro
             ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            //escribir la posicion del objeto
+            
+            // Calcular posición del holograma (centro)
             const holoX = canvas.width / 2;
             const holoY = canvas.height / 2;
-            const holoSize = 80 + Math.sin(time  * 0.02) * 10;
-
-            alert("Dibujando");
+            const holoSize = 80 + Math.sin(time * 0.02) * 20;
+            
+            if (animationActive) {
+                time++;
+            }
+            
+            // Dibujar efecto
+            drawHoloEffect(holoX, holoY, holoSize);
+            
+            // Dibujar holograma
+            const rotation = time * 0.03;
+            drawHologram(holoX, holoY, holoSize, rotation);
+            
+            // Red de referencia
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([10, 10]);
+            ctx.beginPath();
+            ctx.moveTo(holoX - 200, holoY);
+            ctx.lineTo(holoX + 200, holoY);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(holoX, holoY - 200);
+            ctx.lineTo(holoX, holoY + 200);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            requestAnimationFrame(animateAR);
         }
-        abrirCamara();
+        
+        // Controles
+        function changeColor() {
+            colorMode = (colorMode + 1) % colors.length;
+        }
+        
+        function toggleAnimation() {
+            animationActive = !animationActive;
+            document.getElementById('btnAnim').textContent = animationActive ? '⏸ Pausar' : '▶ Reanudar';
+        }
+        
+        function toggleMode() {
+            mode = (mode + 1) % 3;
+            const modes = ['Cristal', 'Anillos', 'Esfera'];
+            document.getElementById('btnMode').textContent = '🔄 ' + modes[mode];
+        }
+        
+        // Responsivo
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+        
+        // Iniciar
+        startCamera();
     </script>
 </body>
 </html>
